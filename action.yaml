@@ -1,0 +1,52 @@
+name: .NET Bump Version
+description: Action to bump the version of a .NET project
+inputs:
+  pat:
+    description: PAT for accessing the application repo
+    required: true
+  new-version:
+    description: The new version to bump to
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Checkout
+      uses: actions/checkout@v2
+      with:
+        token: ${{ inputs.pat }}
+
+    - name: Bump VERSION file
+      run: |
+        echo ${{ inputs.new-version }} > VERSION
+      shell: bash
+
+    - name: Bump assembly file
+      run: |
+        find . -name "AssemblyInfo.cs" -exec sed -i "s/AssemblyVersion(\"[0-9\.]*\")/AssemblyVersion(\"${{ inputs.new-version }}.0\")/g" {} \;
+        find . -name "AssemblyInfo.cs" -exec sed -i "s/AssemblyFileVersion(\"[0-9\.]*\")/AssemblyFileVersion(\"${{ inputs.new-version }}.0\")/g" {} \;
+      shell: bash
+
+    - name: Bump image tags in helm values
+      run: |
+        if [ -f "./charts/values.dev.yaml" ]; then
+        yq -i '.image.tag = "${{ inputs.new-version }}"' './charts/values.dev.yaml'
+        fi
+        if [ -f "./charts/values.prod.yaml" ]; then
+        yq -i '.image.tag = "${{ inputs.new-version }}"' './charts/values.prod.yaml'
+        fi
+        if [ -f "./charts/values.stage.yaml" ]; then
+          yq -i '.image.tag = "${{ inputs.new-version }}"' './charts/values.stage.yaml'
+        fi
+      shell: bash
+    
+    - name: Commit Changes
+      env:
+        GIT_AUTHOR_NAME: Beez Innovation Labs
+        GIT_COMMITTER_NAME: Beez Innovation Labs
+        GIT_AUTHOR_EMAIL: github@beezlabs.com
+        GIT_COMMITTER_EMAIL: github@beezlabs.com
+      run: |
+        git add -A
+        git diff-index --quiet HEAD || git commit -m "feat: bump version to ${{ inputs.new-version }}"
+        git push
+      shell: bash
